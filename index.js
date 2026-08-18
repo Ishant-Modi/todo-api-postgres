@@ -38,26 +38,25 @@ app.get('/tasks/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
-app.post('/tasks', (req, res) => {
+app.post('/tasks', async (req, res) => {
   const { title } = req.body;
 
   if (!title || title.trim() === '') {
     return res.status(400).json({ error: "Title is required" });
   }
 
-  const insert = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
-  const result = insert.run(title, 0);
+  const { rows } = await pool.query(
+    'INSERT INTO tasks (title, done) VALUES ($1, $2) RETURNING *',
+    [title, false]
+  );
 
-  const newTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
-
-  res.status(201).json({ ...newTask, done: !!newTask.done });
+  res.status(201).json(rows[0]);
 });
-
-app.put('/tasks/:id', (req, res) => {
+app.put('/tasks/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
 
-  if (!task) {
+  if (existing.rows.length === 0) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
@@ -67,25 +66,27 @@ app.put('/tasks/:id', (req, res) => {
     return res.status(400).json({ error: "Title cannot be empty" });
   }
 
-  const newTitle = title !== undefined ? title : task.title;
-  const newDone = done !== undefined ? (done ? 1 : 0) : task.done;
+  const newTitle = title !== undefined ? title : existing.rows[0].title;
+  const newDone = done !== undefined ? done : existing.rows[0].done;
 
-  db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(newTitle, newDone, id);
+  const { rows } = await pool.query(
+    'UPDATE tasks SET title = $1, done = $2 WHERE id = $3 RETURNING *',
+    [newTitle, newDone, id]
+  );
 
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  res.json({ ...updated, done: !!updated.done });
+  res.json(rows[0]);
 });
 
 
-app.delete('/tasks/:id', (req, res) => {
+app.delete('/tasks/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
 
-  if (!task) {
+  if (existing.rows.length === 0) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+  await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
   res.status(204).send();
 });
 
