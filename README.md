@@ -1,27 +1,23 @@
-# Task API (SQLite-backed)
+# Task API (Postgres + Docker)
 
-A CRUD API for managing a to-do list, built with Node.js and Express, backed by a SQLite database. This is the Week 3 continuation of the FlyRank Backend Track — the same API from Week 1, with in-memory storage replaced by a real database so data survives a server restart. Supports full create, read, update, and delete operations on tasks, with interactive documentation via Swagger UI.
+A CRUD API for managing a to-do list, built with Node.js and Express, backed by a PostgreSQL database running in Docker. This is the third storage swap in the FlyRank Backend Track — after in-memory (Week 1) and SQLite (Week 2) — the whole stack (app + database) now starts with a single command.
 
-## Why SQLite
-
-SQLite was chosen because it needs no separate server or installation — the entire database is a single file (`tasks.db`) that lives right in the project folder. That makes it ideal for a small project like this: zero setup for anyone who clones the repo, and yet it gives real persistence — tasks created through the API are still there after the server restarts, which was the whole limitation of the in-memory version from Week 1.
-
-## Install & Run
+## Run everything with one command
 
 ```bash
-npm install
-node index.js
+git clone <this-repo-url>
+cd todo-api-postgres
+cp .env.example .env
+docker compose up
 ```
 
-The server starts on `http://localhost:3000`.
+The API will be available at `http://localhost:3000`.
 
-On first run, `tasks.db` is created automatically, the `tasks` table is created if it doesn't exist, and three example tasks are seeded — but only if the table is empty, so restarting the server never duplicates them.
+On first run, `docker compose` builds the app image, starts a Postgres container, creates the `tasks` table if it doesn't exist, and seeds three example tasks — but only if the table is empty, so restarting never duplicates them.
 
-## Where the database lives
+## Environment variables
 
-- File: `tasks.db`, in the project root
-- Created automatically the first time the server runs — no manual setup needed
-- Git-ignored (see `.gitignore`), so every fresh clone starts with its own clean database, seeded with the same three example tasks
+Copy `.env.example` to `.env` before running — see that file for the required variable (`DATABASE_URL`). The example file's values already match `compose.yaml`'s configuration, so no changes are needed to run the project locally.
 
 ## Endpoints
 
@@ -35,43 +31,44 @@ On first run, `tasks.db` is created automatically, the `tasks` table is created 
 | PUT | `/tasks/:id` | Update a task |
 | DELETE | `/tasks/:id` | Delete a task |
 
-All endpoints behave identically to the Week 1 in-memory version — only the storage underneath changed, from an in-memory list to SQL queries against `tasks.db`.
+All endpoints behave identically to the Week 1 (in-memory) and Week 2 (SQLite) versions — only the storage underneath changed, this time to a containerized Postgres database.
 
 ## Example Request
 
 ```
-curl -i -X PUT http://localhost:3000/tasks/4 -H "Content-Type: application/json" -d "{\"done\":true}"
+curl -i http://localhost:3000/tasks 
 HTTP/1.1 200 OK
 X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
-Content-Length: 47
-ETag: W/"2f-AaK7fSPcaFqrubTnTaDKDw/+xaU"
-Date: Mon, 17 Aug 2026 10:52:10 GMT
+Content-Length: 186
+ETag: W/"ba-/OBgBnHN3C8cNCAS2nwUptLyKzU"
+Date: Tue, 18 Aug 2026 08:09:50 GMT
 Connection: keep-alive
 Keep-Alive: timeout=5
 
-{"id":4,"title":"Test persistence","done":true}
+[{"id":1,"title":"Buy milk","done":false},{"id":2,"title":"Walk the dog","done":true},{"id":3,"title":"Finish assignment","done":false},{"id":4,"title":"Persistence check","done":false}]
 ```
+
 
 ## Persistence proof
 
-Unlike the Week 1 version, tasks created here survive a server restart. To verify: create a task, stop the server (`Ctrl+C`), start it again (`node index.js`), then `GET /tasks` — the task is still there.
+Tasks survive not just an app restart, but a full stack teardown. To verify: create a task, then run `docker compose down` followed by `docker compose up` — the task is still there, because the named volume (`taskdata`) keeps the data even though both containers are removed and recreated.
 
-## Swagger UI
+## Viewing the database directly
 
-Interactive API docs are available at `http://localhost:3000/docs` once the server is running.
+```bash
+docker exec -it <db-container-name> psql -U postgres -d tasks
+```
+Then run `\dt` to list tables, or `SELECT * FROM tasks;` to see the rows.
 
- ![Swagger UI screenshot](./swagger-screenshot.png) 
+![Database screenshot](./db-screenshot.png)
 
-## Exploring the database directly
+## Why Docker + Postgres
 
-The database can also be opened and queried by hand using [DB Browser for SQLite](https://sqlitebrowser.org/). Because the API and DB Browser read the same `tasks.db` file, changes made in one show up instantly in the other — no syncing, no restart required.
-
-
-![DB Browser screenshot](./db-browser-screenshot.png)
-
+Postgres runs as its own containerized server rather than a single file (as in Week 2's SQLite version) — this is the same kind of database engine used by real production backends. Docker means no one needs to install Postgres directly: the official `postgres` image is downloaded and run automatically, so the exact same setup works identically on any machine.
 
 ## Notes
 
-- All CRUD operations use parameterized SQL queries (`WHERE id = ?`, never string-concatenated values), which is what protects against SQL injection.
-- SQLite stores booleans as `0`/`1` internally; the API converts these to real `true`/`false` in its JSON responses, so clients see the same shape as before.
+- All CRUD operations use parameterized queries (`$1`, `$2`, ...), never string-concatenated values, to prevent SQL injection.
+- The Postgres image is pinned to `postgres:16` rather than `latest`, for stability across environments.
+- `.env` is git-ignored and never committed; `.env.example` documents the required variable with safe placeholder-equivalent values.
