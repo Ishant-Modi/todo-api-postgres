@@ -1,8 +1,7 @@
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapiSpec = require('./openapi.json');
-const db = require('./db');
-
+const pool = require('./db');
 const app = express();
 
 app.use(express.json());
@@ -24,20 +23,19 @@ app.get('/health', (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get('/tasks', (req, res) => {
-  const tasks = db.prepare('SELECT * FROM tasks').all();
-  const formatted = tasks.map(t => ({ ...t, done: !!t.done }));
-  res.json(formatted);
+app.get('/tasks', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM tasks');
+  res.json(rows);
 });
-app.get('/tasks/:id', (req, res) => {
+app.get('/tasks/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  const { rows } = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
 
-  if (!task) {
+  if (rows.length === 0) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
-  res.json({ ...task, done: !!task.done });
+  res.json(rows[0]);
 });
 
 app.post('/tasks', (req, res) => {
